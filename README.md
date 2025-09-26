@@ -20,4 +20,4 @@ Single shared board. Anyone with the URL can draw, type, and drop images. No aut
 - Tools: Draw lines, add text, drop images, switch to Move for repositioning, and use Erase to delete individual strokes.
 - Move tool: drag to reposition, or grab the bottom-right corner to scale text and images.
 - Keyboard: Ctrl+Z to undo, Ctrl+Shift+Z / Ctrl+Y to redo.
-- No pan/zoom; world == viewport for simplicity.
+- Navigation: Use the mouse wheel to zoom and right-click drag to pan within a large (20k×20k) board.

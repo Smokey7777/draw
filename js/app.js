@@ -205,6 +205,10 @@
 
   canvas.addEventListener("pointermove", e => {
     if (state.panning && state.panning.pointerId === e.pointerId) {
+      if (!(e.buttons & 2)) {
+        state.panning = null;
+        return;
+      }
       const current = getXY(e);
       const dx = current.x - state.panning.start.x;
       const dy = current.y - state.panning.start.y;
@@ -496,22 +500,33 @@
     const item = list.find(x => x.id === drag.id);
     if (!item) return;
     if (drag.mode === "move") {
-      const nx = Math.round(p.x - drag.offset.x);
-      const ny = Math.round(p.y - drag.offset.y);
+      let nx = Math.round(p.x - drag.offset.x);
+      let ny = Math.round(p.y - drag.offset.y);
+      if (drag.type === "image") {
+        const maxX = Math.max(WORLD.minX, WORLD.maxX - item.w);
+        const maxY = Math.max(WORLD.minY, WORLD.maxY - item.h);
+        nx = clamp(nx, WORLD.minX, maxX);
+        ny = clamp(ny, WORLD.minY, maxY);
+      } else {
+        nx = clamp(nx, WORLD.minX, WORLD.maxX);
+        ny = clamp(ny, WORLD.minY, WORLD.maxY);
+      }
       if (drag.current && drag.current.x === nx && drag.current.y === ny) return;
       drag.current = { x: nx, y: ny };
       item.x = nx;
       item.y = ny;
     } else if (drag.type === "image") {
-      const newW = Math.max(16, Math.round(drag.original.w + (p.x - drag.start.x)));
-      const newH = Math.max(16, Math.round(drag.original.h + (p.y - drag.start.y)));
+      const maxW = Math.max(16, WORLD.maxX - drag.original.x);
+      const maxH = Math.max(16, WORLD.maxY - drag.original.y);
+      const newW = clamp(Math.max(16, Math.round(drag.original.w + (p.x - drag.start.x))), 16, maxW);
+      const newH = clamp(Math.max(16, Math.round(drag.original.h + (p.y - drag.start.y))), 16, maxH);
       if (drag.current && drag.current.w === newW && drag.current.h === newH) return;
       drag.current = { w: newW, h: newH };
       item.w = newW;
       item.h = newH;
     } else {
       const delta = Math.max(p.x - drag.start.x, p.y - drag.start.y);
-      const newSize = Math.max(8, Math.round(drag.original.size + delta * 0.5));
+      const newSize = clamp(Math.max(8, Math.round(drag.original.size + delta * 0.5)), 8, 400);
       if (drag.current && drag.current.size === newSize) return;
       drag.current = { size: newSize };
       item.size = newSize;
