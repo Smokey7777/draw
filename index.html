@@ -3,15 +3,16 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Miro-lite (no auth)</title>
+  <title>Draw</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <div id="toolbar">
     <button class="btn" data-tool="draw">Draw</button>
-    <button class="btn" data-tool="text">Text</button>
-    <button class="btn" data-tool="image">Image</button>
-    <button class="btn" id="clear">Clear</button>
+  <button class="btn" data-tool="text">Text</button>
+  <button class="btn" data-tool="image">Image</button>
+  <button class="btn" data-tool="move">Move</button>
+  <button class="btn" data-tool="erase">Erase</button>
     <label>Color <input id="color" type="color" value="#e5e7eb"></label>
     <label>Width <input id="width" type="range" min="1" max="32" value="4"></label>
     <span class="spacer"></span>
@@ -31,15 +32,15 @@
 
   <script>
   // Replace with your Firebase app config. Using RTDB only; keep keys public for this demo.
-  const firebaseConfig = {
-    apiKey: "REPLACE",
-    authDomain: "REPLACE.firebaseapp.com",
-    databaseURL: "https://REPLACE-default-rtdb.REGION.firebasedatabase.app",
-    projectId: "REPLACE",
-    storageBucket: "REPLACE.appspot.com",
-    messagingSenderId: "REPLACE",
-    appId: "REPLACE"
-  };
+const firebaseConfig = {
+  apiKey: "AIzaSyDc0JiWj9spdo-fAnI4hFMEyGDwrZMcbBk",
+  authDomain: "draw-mdc.firebaseapp.com",
+  databaseURL: "https://draw-mdc-default-rtdb.firebaseio.com",
+  projectId: "draw-mdc",
+  storageBucket: "draw-mdc.firebasestorage.app",
+  messagingSenderId: "163228630615",
+  appId: "1:163228630615:web:fbb93069d9c963468dad12"
+};
   </script>
   <script src="js/app.js"></script>
 </body>

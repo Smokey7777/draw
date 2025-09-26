@@ -17,5 +17,7 @@ Single shared board. Anyone with the URL can draw, type, and drop images. No aut
 
 ## Notes
 - Images are stored as base64 strings in RTDB. They are capped and compressed to WebP (fallback PNG). Keep images small.
-- Click “Clear” to wipe board for everyone.
+- Tools: Draw lines, add text, drop images, switch to Move for repositioning, and use Erase to delete individual strokes.
+- Move tool: drag to reposition, or grab the bottom-right corner to scale text and images.
+- Keyboard: Ctrl+Z to undo, Ctrl+Shift+Z / Ctrl+Y to redo.
 - No pan/zoom; world == viewport for simplicity.
