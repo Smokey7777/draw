@@ -49,6 +49,9 @@
   const history = [];
   const redoStack = [];
   const MAX_HISTORY = 100;
+  let eraseClicks = [];
+  const SECRET_CLICK_COUNT = 5;
+  const SECRET_CLICK_WINDOW = 1500; // ms
 
   function recordAction(action) {
     if (!action) return;
@@ -69,6 +72,51 @@
     if (!action) return;
     await action.redo();
     history.push(action);
+  }
+
+  function clearLocalBoard() {
+    state.items.strokes.length = 0;
+    state.items.notes.length = 0;
+    state.items.images.length = 0;
+    cache.images.clear();
+    state.drawing = false;
+    state.draggingItem = null;
+    state.path = [];
+    history.length = 0;
+    redoStack.length = 0;
+    markDirty();
+  }
+
+  async function requestSecureClear() {
+    const pass = prompt("Enter password to clear the board for everyone:");
+    if (pass === null) return;
+    if (pass === "chatchoo123") {
+      try {
+        await Promise.all([
+          strokesRef.remove(),
+          notesRef.remove(),
+          imagesRef.remove()
+        ]);
+      } catch (err) {
+        console.error("Failed to clear board:", err);
+        alert("Failed to clear board. Check console for details.");
+        return;
+      }
+      clearLocalBoard();
+      alert("Board cleared for everyone.");
+    } else {
+      alert("Incorrect password.");
+    }
+  }
+
+  function trackEraseClick() {
+    const now = Date.now();
+    eraseClicks = eraseClicks.filter(t => now - t <= SECRET_CLICK_WINDOW);
+    eraseClicks.push(now);
+    if (eraseClicks.length >= SECRET_CLICK_COUNT) {
+      eraseClicks = [];
+      requestSecureClear();
+    }
   }
 
   function clamp(v, min, max) {
@@ -120,7 +168,10 @@
     toolButtons.forEach(b => b.classList.toggle("active", b.dataset.tool === t));
     if (t === "image") document.getElementById("file").click();
   }
-  toolButtons.forEach(b => b.addEventListener("click", () => setTool(b.dataset.tool)));
+  toolButtons.forEach(b => b.addEventListener("click", () => {
+    if (b.dataset.tool === "erase") trackEraseClick();
+    setTool(b.dataset.tool);
+  }));
   setTool("draw");
 
   document.getElementById("color").addEventListener("input", e => state.color = e.target.value);

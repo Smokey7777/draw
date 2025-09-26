@@ -21,3 +21,4 @@ Single shared board. Anyone with the URL can draw, type, and drop images. No aut
 - Move tool: drag to reposition, or grab the bottom-right corner to scale text and images.
 - Keyboard: Ctrl+Z to undo, Ctrl+Shift+Z / Ctrl+Y to redo.
 - Navigation: Use the mouse wheel to zoom and right-click drag to pan within a large (20k×20k) board.
+- Admin clear: Click the Erase tool five times quickly and enter password `chatchoo123` to wipe the shared board for everyone.
