@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Miro-lite (no auth)</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="toolbar">
+    <button class="btn" data-tool="draw">Draw</button>
+    <button class="btn" data-tool="text">Text</button>
+    <button class="btn" data-tool="image">Image</button>
+    <button class="btn" id="clear">Clear</button>
+    <label>Color <input id="color" type="color" value="#e5e7eb"></label>
+    <label>Width <input id="width" type="range" min="1" max="32" value="4"></label>
+    <span class="spacer"></span>
+    <button class="btn" id="save">Save PNG</button>
+    <span id="users">Users: 0</span>
+  </div>
+
+  <div id="board">
+    <canvas id="c"></canvas>
+  </div>
+
+  <input id="file" type="file" accept="image/*" style="display:none" />
+
+  <!-- Firebase (compat for simplicity) -->
+  <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-database-compat.js"></script>
+
+  <script>
+  // Replace with your Firebase app config. Using RTDB only; keep keys public for this demo.
+  const firebaseConfig = {
+    apiKey: "REPLACE",
+    authDomain: "REPLACE.firebaseapp.com",
+    databaseURL: "https://REPLACE-default-rtdb.REGION.firebasedatabase.app",
+    projectId: "REPLACE",
+    storageBucket: "REPLACE.appspot.com",
+    messagingSenderId: "REPLACE",
+    appId: "REPLACE"
+  };
+  </script>
+  <script src="js/app.js"></script>
+</body>
+</html>
