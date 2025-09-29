@@ -1,4 +1,4 @@
-# Miro-lite (no auth) — GitHub Pages + Firebase Realtime Database
+# Simple Board — GitHub Pages + Firebase Realtime Database
 
 Single shared board. Anyone with the URL can draw, type, and drop images. No authentication. Uses Firebase Realtime Database with fully open rules.
 
