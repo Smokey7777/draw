@@ -7,24 +7,66 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <div id="toolbar">
-    <button class="btn" data-tool="draw">Draw</button>
-  <button class="btn" data-tool="text">Text</button>
-  <button class="btn" data-tool="image">Image</button>
-  <button class="btn" data-tool="move">Move</button>
-  <button class="btn" data-tool="erase">Erase</button>
-    <label>Color <input id="color" type="color" value="#e5e7eb"></label>
-    <label>Width <input id="width" type="range" min="1" max="32" value="4"></label>
-    <span class="spacer"></span>
-    <button class="btn" id="save">Save PNG</button>
-    <span id="users">Users: 0</span>
-  </div>
+  <div id="miro-app">
+    <div id="toolbar" class="miro-panel">
+      <div class="miro-group" id="tool-group">
+        <button class="miro-btn miro-tool" data-tool="select" title="Select (V)">Select</button>
+        <button class="miro-btn miro-tool" data-tool="draw" title="Pen (P)">Pen</button>
+        <button class="miro-btn miro-tool" data-tool="highlighter" title="Highlighter (H)">Highlight</button>
+        <button class="miro-btn miro-tool" data-tool="sticky" title="Sticky Note (N)">Sticky</button>
+        <button class="miro-btn miro-tool" data-tool="text" title="Text (T)">Text</button>
+        <button class="miro-btn miro-tool" data-tool="rect" title="Rectangle (R)">Rect</button>
+        <button class="miro-btn miro-tool" data-tool="ellipse" title="Ellipse (E)">Ellipse</button>
+        <button class="miro-btn miro-tool" data-tool="line" title="Line (L)">Line</button>
+        <button class="miro-btn miro-tool" data-tool="arrow" title="Arrow (A)">Arrow</button>
+        <button class="miro-btn miro-tool" data-tool="image" title="Image (I)">Image</button>
+        <button class="miro-btn miro-tool" data-tool="erase" title="Erase (Del)">Erase</button>
+      </div>
 
-  <div id="board">
-    <canvas id="c"></canvas>
-  </div>
+      <div class="miro-group" id="property-group">
+        <label class="miro-control">Stroke
+        <input id="strokeColor" type="color" value="#e5e7eb">
+      </label>
+        <label class="miro-control">Fill
+        <input id="fillColor" type="color" value="#1f2937">
+      </label>
+        <label class="miro-control">Width
+        <input id="width" type="range" min="1" max="48" value="4">
+      </label>
+        <label class="miro-control">Opacity
+        <input id="opacity" type="range" min="0.1" max="1" step="0.05" value="1">
+      </label>
+        <div class="miro-control miro-swatches" id="sticky-swatches" title="Quick sticky colors">
+          <button class="miro-swatch" data-fill="#FDE68A"></button>
+          <button class="miro-swatch" data-fill="#FCA5A5"></button>
+          <button class="miro-swatch" data-fill="#A5B4FC"></button>
+          <button class="miro-swatch" data-fill="#6EE7B7"></button>
+          <button class="miro-swatch" data-fill="#F9A8D4"></button>
+        </div>
+      </div>
 
-  <input id="file" type="file" accept="image/*" style="display:none" />
+      <div class="miro-group" id="action-group">
+        <button class="miro-btn" id="undo" title="Undo (Ctrl/Cmd+Z)">Undo</button>
+        <button class="miro-btn" id="redo" title="Redo (Shift+Ctrl/Cmd+Z)">Redo</button>
+        <button class="miro-btn" id="duplicate" title="Duplicate (Ctrl/Cmd+D)">Duplicate</button>
+        <button class="miro-btn" id="delete" title="Delete (Delete)">Delete</button>
+        <button class="miro-btn" id="save" title="Export as PNG">Export</button>
+      </div>
+
+      <div class="miro-group miro-status" id="status-group">
+        <span id="zoom">100%</span>
+        <span id="users">Users: 0</span>
+      </div>
+    </div>
+    <div id="board">
+      <canvas id="c"></canvas>
+      <div id="minimap" class="miro-panel">
+        <canvas id="mini" width="200" height="140"></canvas>
+      </div>
+    </div>
+
+    <input id="file" type="file" accept="image/*" style="display:none" />
+  </div>
 
   <!-- Firebase (compat for simplicity) -->
   <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
