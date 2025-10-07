@@ -36,6 +36,7 @@
   const fileInput = document.getElementById("file");
   const zoomEl = document.getElementById("zoom");
   const usersEl = document.getElementById("users");
+  const inlineEditor = document.getElementById("inline-editor");
 
   const DPR = Math.min(window.devicePixelRatio || 1, 2);
   const WORLD = { minX: 0, minY: 0, maxX: 20000, maxY: 20000 };
@@ -66,7 +67,9 @@
       shapes: [],
       connectors: []
     },
-    lastClick: { x: 200, y: 200 }
+    lastClick: null,
+    clipboard: null,
+    editor: null
   };
 
   const history = [];
@@ -112,6 +115,15 @@
     };
   }
 
+  function deepClone(obj) {
+    if (obj == null) return obj;
+    if (typeof structuredClone === "function") {
+      try { return structuredClone(obj); }
+      catch { /* ignore */ }
+    }
+    return JSON.parse(JSON.stringify(obj));
+  }
+
   function clampViewport() {
     const scale = state.viewport.scale;
     const viewW = canvas.clientWidth / scale;
@@ -154,7 +166,15 @@
       miniCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
       miniDirty = true;
     }
+    const center = {
+      x: state.viewport.offsetX + (canvas.clientWidth / state.viewport.scale) / 2,
+      y: state.viewport.offsetY + (canvas.clientHeight / state.viewport.scale) / 2
+    };
+    if (!state.lastClick || !isFinite(state.lastClick.x) || !isFinite(state.lastClick.y)) {
+      state.lastClick = center;
+    }
     updateZoom();
+    syncEditorPosition();
   }
   window.addEventListener("resize", resize);
 
@@ -177,6 +197,10 @@
   loop();
 
   function updateCursor() {
+    if (isEditing()) {
+      canvas.style.cursor = "text";
+      return;
+    }
     if (state.panning) {
       canvas.style.cursor = "grabbing";
       return;
@@ -195,6 +219,9 @@
   }
 
   function setTool(name) {
+    if (isEditing()) {
+      closeEditor(true).catch(console.error);
+    }
     state.tool = name;
     state.drawing = false;
     state.dragCreate = null;
@@ -262,6 +289,172 @@
     inspectorLock = false;
   }
 
+  let editorClosing = false;
+
+  function isEditing() {
+    return !!(state.editor && state.editor.active);
+  }
+
+  function startEditorForExisting(note) {
+    if (!note || !inlineEditor) return;
+    const snapshot = stripId(note);
+    openInlineEditor({
+      active: true,
+      mode: "existing",
+      id: note.id,
+      kind: note.kind || "text",
+      size: note.size || 20,
+      fill: note.bg ?? null,
+      color: note.color || state.stroke,
+      initialText: note.text || "",
+      snapshot
+    });
+  }
+
+  function startEditorForNew(kind, point) {
+    if (!inlineEditor) return;
+    const anchor = clampWorldPoint(point);
+    setSelection(null);
+    openInlineEditor({
+      active: true,
+      mode: "new",
+      kind,
+      anchor,
+      size: kind === "sticky" ? 22 : 20,
+      fill: kind === "sticky" ? state.fill : null,
+      color: kind === "sticky" ? chooseTextColor(state.fill) : state.stroke,
+      initialText: "",
+      selectAll: true
+    });
+  }
+
+  function openInlineEditor(config) {
+    if (!inlineEditor) return;
+    if (isEditing()) {
+      closeEditor(true).catch(console.error);
+    }
+    state.editor = config;
+    state.editor.active = true;
+    inlineEditor.value = config.initialText || "";
+    inlineEditor.dataset.kind = config.kind || "text";
+    inlineEditor.placeholder = config.kind === "sticky" ? "Sticky note" : "Text";
+    inlineEditor.classList.toggle("sticky", config.kind === "sticky");
+    inlineEditor.style.display = "block";
+    inlineEditor.style.background = config.kind === "sticky"
+      ? (config.fill || state.fill || "#fef08a")
+      : "rgba(15, 23, 42, 0.94)";
+    inlineEditor.style.color = config.kind === "sticky"
+      ? chooseTextColor(config.fill || state.fill || "#fef08a")
+      : (config.color || state.stroke || "#e5e7eb");
+    inlineEditor.style.borderColor = "rgba(96, 165, 250, 0.45)";
+    inlineEditor.scrollTop = 0;
+    positionEditor(config);
+    updateCursor();
+    requestAnimationFrame(() => {
+      inlineEditor.focus({ preventScroll: true });
+      if (config.selectAll) {
+        inlineEditor.select();
+      } else {
+        const len = inlineEditor.value.length;
+        inlineEditor.setSelectionRange(len, len);
+      }
+    });
+  }
+
+  function positionEditor(edit) {
+    if (!inlineEditor || !edit) return;
+    let bounds;
+    let fontSize = edit.size || 20;
+    if (edit.mode === "existing") {
+      const note = state.items.notes.find(n => n.id === edit.id);
+      if (!note) return;
+      bounds = getNoteBounds(note);
+      fontSize = note.size || fontSize;
+      edit.fill = note.bg ?? edit.fill;
+      edit.color = note.color ?? edit.color;
+    } else {
+      const baseWidth = edit.kind === "sticky" ? 260 : 220;
+      const baseHeight = edit.kind === "sticky" ? 200 : Math.max(fontSize * 2, 120);
+      bounds = { x: edit.anchor.x, y: edit.anchor.y, w: baseWidth, h: baseHeight };
+    }
+    const screen = worldToScreen({ x: bounds.x, y: bounds.y });
+    const widthPx = Math.max(bounds.w * state.viewport.scale, 160);
+    const heightPx = Math.max(bounds.h * state.viewport.scale, 80);
+    inlineEditor.style.left = `${screen.x}px`;
+    inlineEditor.style.top = `${screen.y}px`;
+    inlineEditor.style.width = `${widthPx}px`;
+    inlineEditor.style.height = `${heightPx}px`;
+    inlineEditor.style.fontSize = `${(fontSize || 20) * state.viewport.scale}px`;
+    inlineEditor.style.lineHeight = edit.kind === "sticky" ? "1.4" : "1.3";
+  }
+
+  function syncEditorPosition() {
+    if (!isEditing()) return;
+    positionEditor(state.editor);
+  }
+
+  async function closeEditor(commit) {
+    if (!inlineEditor) return;
+    if (!isEditing() || editorClosing) return;
+    editorClosing = true;
+    const edit = state.editor;
+    const value = inlineEditor.value;
+    inlineEditor.style.display = "none";
+    inlineEditor.classList.remove("sticky");
+    inlineEditor.value = "";
+    state.editor = null;
+    try {
+      if (commit) {
+        const trimmed = value.replace(/\s+$/g, "");
+        if (edit.mode === "new") {
+          if (trimmed.trim()) {
+            const opts = {
+              text: trimmed,
+              kind: edit.kind || "text",
+              color: edit.kind === "sticky"
+                ? chooseTextColor(edit.fill || state.fill || "#fef08a")
+                : (edit.color || state.stroke),
+              bg: edit.kind === "sticky" ? (edit.fill || state.fill) : null,
+              size: edit.size || 20,
+              opacity: state.opacity
+            };
+            await createNote(edit.anchor, opts);
+          }
+        } else if (edit.mode === "existing") {
+          const ref = refs.notes.child(edit.id);
+          if (!trimmed.trim()) {
+            const snapshot = edit.snapshot || {};
+            await ref.remove();
+            recordAction({
+              undo: () => ref.set(snapshot),
+              redo: () => ref.remove()
+            });
+            if (state.selection && state.selection.id === edit.id) {
+              setSelection(null);
+            }
+          } else if (trimmed !== edit.initialText) {
+            const updates = { text: trimmed };
+            await ref.update(updates);
+            recordAction({
+              undo: () => ref.update({ text: edit.initialText }),
+              redo: () => ref.update(updates)
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Editor commit failed:", err);
+    } finally {
+      editorClosing = false;
+      markDirty();
+      updateCursor();
+    }
+  }
+
+  function cancelEditor() {
+    closeEditor(false).catch(console.error);
+  }
+
   function getItemBySelection(sel) {
     if (!sel) return null;
     const list = state.items[sel.type + "s"];
@@ -282,6 +475,29 @@
     });
   });
   setTool("select");
+
+  if (inlineEditor) {
+    inlineEditor.addEventListener("keydown", e => {
+      const kind = state.editor?.kind || "text";
+      if (e.key === "Escape") {
+        e.preventDefault();
+        cancelEditor();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        closeEditor(true).catch(console.error);
+        return;
+      }
+      if (kind !== "sticky" && e.key === "Enter" && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        closeEditor(true).catch(console.error);
+      }
+    });
+    inlineEditor.addEventListener("blur", () => {
+      closeEditor(true).catch(console.error);
+    });
+  }
   strokeInput?.addEventListener("input", e => {
     if (inspectorLock) return;
     state.stroke = e.target.value;
@@ -412,10 +628,27 @@
   });
 
   window.addEventListener("paste", async e => {
-    const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith("image/"));
-    if (!item) return;
-    const f = item.getAsFile();
-    if (f) await handleImageFile(f, state.lastClick);
+    if (isEditing()) return;
+    const items = [...(e.clipboardData?.items || [])];
+    const centerFallback = {
+      x: state.viewport.offsetX + (canvas.clientWidth / state.viewport.scale) / 2,
+      y: state.viewport.offsetY + (canvas.clientHeight / state.viewport.scale) / 2
+    };
+    const imageItem = items.find(i => i.type.startsWith("image/"));
+    if (imageItem) {
+      const file = imageItem.getAsFile();
+      if (file) {
+        const anchor = clampWorldPoint(state.lastClick || centerFallback);
+        await handleImageFile(file, anchor);
+      }
+      return;
+    }
+    const text = e.clipboardData?.getData("text/plain");
+    if (text && text.trim()) {
+      e.preventDefault();
+      const anchor = clampWorldPoint(state.lastClick || centerFallback);
+      await createNote(anchor, { text: text.trim(), kind: "text", color: state.stroke, bg: null });
+    }
   });
 
   window.addEventListener("dragover", e => e.preventDefault());
@@ -459,6 +692,9 @@
   }, { passive: false });
 
   canvas.addEventListener("pointerdown", async e => {
+    if (isEditing()) {
+      closeEditor(true).catch(console.error);
+    }
     if (e.button === 2) {
       canvas.setPointerCapture(e.pointerId);
       state.panning = {
@@ -474,6 +710,16 @@
     const worldP = getWorldXY(e);
     state.lastClick = worldP;
 
+    if (state.tool === "text") {
+      startEditorForNew("text", worldP);
+      return;
+    }
+
+    if (state.tool === "sticky") {
+      startEditorForNew("sticky", worldP);
+      return;
+    }
+
     if (state.tool === "draw" || state.tool === "highlighter") {
       state.drawing = true;
       state.path = [worldP];
@@ -484,26 +730,6 @@
     if (state.tool === "erase") {
       state.drawing = true;
       state.path = [worldP];
-      return;
-    }
-
-    if (state.tool === "text") {
-      const text = prompt("Enter text");
-      if (!text) return;
-      await createNote(worldP, { text, kind: "text", color: state.stroke, bg: null });
-      setTool("select");
-      return;
-    }
-
-    if (state.tool === "sticky") {
-      await createNote(worldP, {
-        text: "New sticky",
-        kind: "sticky",
-        color: chooseTextColor(state.fill),
-        bg: state.fill,
-        size: 20
-      });
-      setTool("select");
       return;
     }
 
@@ -681,22 +907,12 @@
     updateCursor();
   });
 
-  canvas.addEventListener("dblclick", async e => {
+  canvas.addEventListener("dblclick", e => {
+    if (isEditing()) return;
     const worldP = getWorldXY(e);
     const noteHit = findNoteAt(worldP);
     if (noteHit) {
-      const { note } = noteHit;
-      const text = prompt("Edit note text", note.text || "");
-      if (text === null) return;
-      const ref = refs.notes.child(note.id);
-      const before = { text: note.text || "" };
-      const updates = { text };
-      await ref.update(updates);
-      recordAction({
-        undo: () => ref.update(before),
-        redo: () => ref.update(updates)
-      });
-      markDirty();
+      startEditorForExisting(noteHit.note);
     }
   });
 
@@ -706,6 +922,17 @@
       return;
     }
 
+    if ((e.ctrlKey || e.metaKey) && key === "c") {
+      e.preventDefault();
+      copySelection();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && key === "v") {
+      if (isEditing()) return;
+      e.preventDefault();
+      pasteClipboard().catch(console.error);
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && key === "z" && !e.shiftKey) {
       e.preventDefault();
       undo().catch(console.error);
@@ -725,6 +952,14 @@
       if (state.selection) {
         e.preventDefault();
         deleteSelection().catch(console.error);
+      }
+      return;
+    }
+    if (!e.ctrlKey && !e.metaKey && key === "enter") {
+      if (state.selection && state.selection.type === "note") {
+        e.preventDefault();
+        const note = getItemBySelection(state.selection);
+        if (note) startEditorForExisting(note);
       }
       return;
     }
@@ -833,56 +1068,119 @@
     markDirty();
   }
 
+  function getRefByType(type) {
+    switch (type) {
+      case "note": return refs.notes;
+      case "shape": return refs.shapes;
+      case "image": return refs.images;
+      case "connector": return refs.connectors;
+      case "stroke": return refs.strokes;
+      default: return refs.notes;
+    }
+  }
+
+  function getRefForSelection(sel) {
+    return getRefByType(sel.type);
+  }
+
+  function offsetItemData(type, data, offset) {
+    const clone = deepClone(data) || {};
+    const dx = Math.round(offset?.x ?? 0);
+    const dy = Math.round(offset?.y ?? 0);
+    if (type === "note") {
+      clone.x = clamp(Math.round((clone.x ?? 0) + dx), WORLD.minX, WORLD.maxX);
+      clone.y = clamp(Math.round((clone.y ?? 0) + dy), WORLD.minY, WORLD.maxY);
+    } else if (type === "shape") {
+      const w = clone.w || 0;
+      const h = clone.h || 0;
+      const maxX = Math.max(WORLD.minX, WORLD.maxX - w);
+      const maxY = Math.max(WORLD.minY, WORLD.maxY - h);
+      clone.x = clamp(Math.round((clone.x ?? 0) + dx), WORLD.minX, maxX);
+      clone.y = clamp(Math.round((clone.y ?? 0) + dy), WORLD.minY, maxY);
+    } else if (type === "image") {
+      const w = clone.w || 0;
+      const h = clone.h || 0;
+      const maxX = Math.max(WORLD.minX, WORLD.maxX - w);
+      const maxY = Math.max(WORLD.minY, WORLD.maxY - h);
+      clone.x = clamp(Math.round((clone.x ?? 0) + dx), WORLD.minX, maxX);
+      clone.y = clamp(Math.round((clone.y ?? 0) + dy), WORLD.minY, maxY);
+    } else if (type === "connector") {
+      clone.ax = clamp(Math.round((clone.ax ?? 0) + dx), WORLD.minX, WORLD.maxX);
+      clone.ay = clamp(Math.round((clone.ay ?? 0) + dy), WORLD.minY, WORLD.maxY);
+      clone.bx = clamp(Math.round((clone.bx ?? 0) + dx), WORLD.minX, WORLD.maxX);
+      clone.by = clamp(Math.round((clone.by ?? 0) + dy), WORLD.minY, WORLD.maxY);
+    } else if (type === "stroke") {
+      clone.points = (clone.points || []).map(pt => [pt[0] + dx, pt[1] + dy]);
+    }
+    return clone;
+  }
+
+  async function spawnItem(type, data, offset = { x: 0, y: 0 }) {
+    const ref = getRefByType(type);
+    if (!ref || !data) return null;
+    const payload = offsetItemData(type, data, offset);
+    const child = ref.push();
+    await child.set(payload);
+    recordAction({
+      undo: () => child.remove(),
+      redo: () => child.set(payload)
+    });
+    markDirty();
+    return child.key;
+  }
+
   async function duplicateSelection() {
     const sel = state.selection;
     if (!sel) return;
     const item = getItemBySelection(sel);
     if (!item) return;
-    const ref = getRefForSelection(sel);
-    const cloneRef = ref.push();
-    const offset = 32;
-    let cloneData = null;
-    if (sel.type === "note") {
-      cloneData = {
-        ...stripId(item),
-        x: clamp(item.x + offset, WORLD.minX, WORLD.maxX),
-        y: clamp(item.y + offset, WORLD.minY, WORLD.maxY)
-      };
-    } else if (sel.type === "shape") {
-      cloneData = {
-        ...stripId(item),
-        x: clamp(item.x + offset, WORLD.minX, WORLD.maxX),
-        y: clamp(item.y + offset, WORLD.minY, WORLD.maxY)
-      };
-    } else if (sel.type === "image") {
-      cloneData = {
-        ...stripId(item),
-        x: clamp(item.x + offset, WORLD.minX, WORLD.maxX),
-        y: clamp(item.y + offset, WORLD.minY, WORLD.maxY)
-      };
-    } else if (sel.type === "connector") {
-      cloneData = {
-        ...stripId(item),
-        ax: clamp(item.ax + offset, WORLD.minX, WORLD.maxX),
-        ay: clamp(item.ay + offset, WORLD.minY, WORLD.maxY),
-        bx: clamp(item.bx + offset, WORLD.minX, WORLD.maxX),
-        by: clamp(item.by + offset, WORLD.minY, WORLD.maxY)
-      };
-    } else if (sel.type === "stroke") {
-      cloneData = {
-        ...stripId(item),
-        points: (item.points || []).map(pt => [pt[0] + offset, pt[1] + offset])
-      };
-    } else {
-      return;
+    const id = await spawnItem(sel.type, stripId(item), { x: 32, y: 32 });
+    if (id) {
+      setSelection({ type: sel.type, id });
     }
-    await cloneRef.set(cloneData);
-    recordAction({
-      undo: () => cloneRef.remove(),
-      redo: () => cloneRef.set(cloneData)
+  }
+
+  function copySelection() {
+    if (!state.selection) return;
+    const item = getItemBySelection(state.selection);
+    if (!item) return;
+    state.clipboard = {
+      type: state.selection.type,
+      data: stripId(item)
+    };
+  }
+
+  async function pasteClipboard() {
+    if (!state.clipboard) return;
+    const { type, data } = state.clipboard;
+    const centerFallback = {
+      x: state.viewport.offsetX + (canvas.clientWidth / state.viewport.scale) / 2,
+      y: state.viewport.offsetY + (canvas.clientHeight / state.viewport.scale) / 2
+    };
+    const fallback = state.lastClick || centerFallback;
+    const anchor = clampWorldPoint({
+      x: fallback.x + 32,
+      y: fallback.y + 32
     });
-    setSelection({ type: sel.type, id: cloneRef.key });
-    markDirty();
+    let offset = { x: 32, y: 32 };
+    if (type === "note" || type === "shape" || type === "image") {
+      if (typeof data.x === "number" && typeof data.y === "number") {
+        offset = { x: anchor.x - data.x, y: anchor.y - data.y };
+      }
+    } else if (type === "connector") {
+      if (typeof data.ax === "number" && typeof data.ay === "number") {
+        offset = { x: anchor.x - data.ax, y: anchor.y - data.ay };
+      }
+    } else if (type === "stroke") {
+      const first = data.points && data.points[0];
+      if (first) {
+        offset = { x: anchor.x - first[0], y: anchor.y - first[1] };
+      }
+    }
+    const id = await spawnItem(type, data, offset);
+    if (id) {
+      setSelection({ type, id });
+    }
   }
 
   async function deleteSelection() {
@@ -901,16 +1199,6 @@
     markDirty();
   }
 
-  function getRefForSelection(sel) {
-    switch (sel.type) {
-      case "note": return refs.notes;
-      case "shape": return refs.shapes;
-      case "image": return refs.images;
-      case "connector": return refs.connectors;
-      case "stroke": return refs.strokes;
-      default: return refs.notes;
-    }
-  }
   function cloneItemSnapshot(pick) {
     const { item, type } = pick;
     if (type === "stroke") {
@@ -1161,8 +1449,9 @@
 
   function stripId(obj) {
     if (!obj) return null;
-    const { id, ...rest } = obj;
-    return JSON.parse(JSON.stringify(rest));
+    const clone = deepClone(obj) || {};
+    delete clone.id;
+    return clone;
   }
 
   function findStrokeAt(p) {
@@ -1244,6 +1533,7 @@
     drawDrawingPreview(ctx);
     drawSelectionOutline(ctx);
     ctx.restore();
+    syncEditorPosition();
   }
 
   function drawGrid(context, w, h) {
